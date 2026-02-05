@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>長輩好用版 - LINE貼圖文字編輯器 (全功能版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <style>
+        :root { font-family: 'Inter', '微軟正黑體', sans-serif; }
+        
+        input[type=range] {
+            height: 35px;
+            cursor: pointer;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            padding-top: 100%;
+            border: 4px solid #e5e7eb;
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        .canvas-preview {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(45deg, #f0f0f0 25%, transparent 25%), 
+                linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #f0f0f0 75%), 
+                linear-gradient(-45deg, transparent 75%, #f0f0f0 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        #stickerUpload, #fontUpload { display: none; }
+        
+        .sticker-text-input {
+            font-size: 1.1rem;
+            padding: 0.75rem;
+        }
+        
+        .btn-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    </style>
+</head>
+<body class="bg-amber-50 min-h-screen p-4 sm:p-6">
+
+    <div class="max-w-7xl mx-auto bg-white shadow-2xl rounded-2xl p-6 sm:p-10 border-t-8 border-orange-500">
+        
+        <div class="text-center mb-10">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-800 mb-4 tracking-wide">
+                🎨 LINE 貼圖文字小幫手
+            </h1>
+            <p class="text-xl text-gray-600 font-medium">
+                簡單三步驟，幫您的貼圖加上又大又清楚的字！
+            </p>
+        </div>
+
+        <div class="bg-blue-50 rounded-2xl p-6 mb-8 border-2 border-blue-200">
+            <h2 class="text-2xl font-bold text-blue-800 mb-4 flex items-center">
+                <span class="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">1</span>
+                選擇貼圖圖片
+            </h2>
+            
+            <div class="flex flex-col md:flex-row gap-6">
+                <div class="flex-1">
+                    <button onclick="document.getElementById('stickerUpload').click()"
+                            class="w-full py-6 px-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl font-bold rounded-xl shadow-lg transition btn-hover flex items-center justify-center gap-3">
+                        📂 點這裡選圖片 (PNG)
+                    </button>
+                    <input type="file" id="stickerUpload" accept="image/png" multiple onchange="handleStickerUpload(event)">
+                    <p id="stickerCount" class="mt-3 text-lg text-blue-600 font-medium text-center">尚未選擇圖片</p>
+                </div>
+
+                <div class="flex-1">
+                    <button onclick="document.getElementById('fontUpload').click()"
+                            class="w-full py-6 px-4 bg-purple-500 hover:bg-purple-600 text-white text-xl font-bold rounded-xl shadow-lg transition btn-hover flex items-center justify-center gap-3">
+                        🔤 換字體 (選用)
+                    </button>
+                    <input type="file" id="fontUpload" accept=".ttf,.otf" onchange="handleFontUpload(event)">
+                    <p id="fontStatus" class="mt-3 text-lg text-purple-600 font-medium text-center">目前字體：預設標準體</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="editSection" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-gray-200 pb-3 flex items-center">
+                <span class="bg-orange-500 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">2</span>
+                調整文字內容與位置
+            </h2>
+
+            <div id="stickerGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                </div>
+
+            <div class="mt-12 pt-8 border-t-2 border-gray-300">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+                    <span class="bg-green-600 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">3</span>
+                    完成下載
+                </h2>
+                <button id="batchDownloadBtn" onclick="batchDownload()"
+                        class="w-full py-6 bg-green-600 text-white font-bold text-3xl rounded-xl shadow-xl hover:bg-green-700 transition btn-hover flex items-center justify-center gap-4">
+                    📦 一鍵下載全部貼圖 (ZIP壓縮包)
+                </button>
+                <p class="mt-4 text-lg text-gray-500 text-center">如果您想一次下載所有圖片，請按上面這個按鈕。</p>
+            </div>
+        </div>
+
+        <div id="messageBox" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white text-xl px-8 py-6 rounded-2xl shadow-2xl hidden z-50 text-center"></div>
+    </div>
+
+    <script>
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; 
+        let loadedStickers = []; 
+        let currentFontFamily = 'Inter, "Microsoft JhengHei", sans-serif'; 
+        
+        const PREDEFINED_TEXTS = [
+            '早安', '午安', '晚安', '謝謝', '收到', 'OK',
+            '辛苦了', '讚', '好棒', '恭喜', '加油', '沒問題',
+            '生日快樂', '新年快樂', '保重', '哈囉', '拜拜'
+        ];
+
+        const stickerGrid = document.getElementById('stickerGrid');
+        const editSection = document.getElementById('editSection');
+
+        function showMessage(message) {
+            const msgBox = document.getElementById('messageBox');
+            msgBox.innerHTML = message;
+            msgBox.classList.remove('hidden');
+            setTimeout(() => {
+                msgBox.classList.add('hidden');
+            }, 2500);
+        }
+
+        function handleStickerUpload(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            loadedStickers = []; 
+            stickerGrid.innerHTML = '';
+            
+            document.getElementById('stickerCount').textContent = `✅ 已選擇 ${files.length} 張圖片`;
+            editSection.classList.remove('hidden');
+
+            let loadedCount = 0;
+            files.forEach((file, index) => {
+                if (!file.type.startsWith('image/png')) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const stickerObject = {
+                            id: `sticker-${Date.now()}-${index}`,
+                            file: file,
+                            img: img,
+                            text: '',
+                            textColor: '#000000',
+                            scale: 18,     
+                            posX: 50,      
+                            posY: 92,      
+                            canvas: null 
+                        };
+                        loadedStickers.push(stickerObject);
+                        createStickerCard(stickerObject);
+                        
+                        loadedCount++;
+                        if (loadedCount === files.filter(f => f.type.startsWith('image/png')).length) {
+                             loadedStickers.sort((a, b) => a.file.name.localeCompare(b.file.name));
+                             loadedStickers.forEach(s => redrawSticker(s.id));
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+            
+            setTimeout(() => {
+                editSection.scrollIntoView({ behavior: 'smooth' });
+            }, 500);
+        }
+
+        function handleFontUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fontId = 'CustomFont';
+                const style = document.createElement('style');
+                style.textContent = `@font-face { font-family: '${fontId}'; src: url('${e.target.result}'); }`;
+                document.head.appendChild(style);
+                currentFontFamily = `'${fontId}', sans-serif`;
+                document.getElementById('fontStatus').textContent = `✅ 使用字體：${file.name}`;
+                showMessage(`👌 字體更換成功！`);
+                loadedStickers.forEach(s => redrawSticker(s.id));
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function createStickerCard(sticker) {
+            const card = document.createElement('div');
+            card.id = `card-${sticker.id}`;
+            card.className = 'bg-white border-2 border-gray-200 rounded-2xl shadow-lg p-5 flex flex-col hover:border-orange-300 transition-colors relative';
+            
+            // 1. 圖片預覽
+            const canvasContainer = document.createElement('div');
+            canvasContainer.className = 'canvas-container mb-4 shadow-inner';
+            const canvas = document.createElement('canvas');
+            canvas.className = 'canvas-preview';
+            canvasContainer.appendChild(canvas);
+            sticker.canvas = canvas;
+
+            // 2. 文字輸入區
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'space-y-3 mb-4';
+
+            const select = document.createElement('select');
+            select.className = 'w-full p-3 text-lg border-2 border-gray-300 rounded-lg bg-gray-50';
+            select.innerHTML = '<option value="">👇 點這裡選常用語</option>';
+            PREDEFINED_TEXTS.forEach(t => select.innerHTML += `<option value="${t}">${t}</option>`);
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = '或是自己打字...';
+            input.className = 'w-full p-3 text-xl font-bold border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none';
+            
+            // 顏色選擇區
+            const colorContainer = document.createElement('div');
+            colorContainer.className = 'flex flex-wrap gap-2 justify-center py-2 items-center';
+            const colors = ['#000000', '#FF0000', '#0000FF', '#008000', '#FF00FF', '#FFA500'];
+            colors.forEach(c => {
+                const colorBtn = document.createElement('button');
+                colorBtn.className = `w-10 h-10 rounded-full border-2 border-white shadow-md focus:ring-2 ring-offset-2 ring-gray-400`;
+                colorBtn.style.backgroundColor = c;
+                colorBtn.onclick = () => {
+                    sticker.textColor = c;
+                    redrawSticker(sticker.id);
+                    highlightSelectedColor(colorBtn);
+                };
+                colorContainer.appendChild(colorBtn);
+            });
+            const customColorLabel = document.createElement('label');
+            customColorLabel.className = "w-10 h-10 rounded-full border-2 border-white shadow-md cursor-pointer flex items-center justify-center bg-gradient-to-br from-red-500 via-green-500 to-blue-500 hover:opacity-80";
+            customColorLabel.title = "自訂顏色";
+            const customColorInput = document.createElement('input');
+            customColorInput.type = 'color';
+            customColorInput.className = 'sr-only';
+            customColorInput.onchange = (e) => {
+                sticker.textColor = e.target.value;
+                redrawSticker(sticker.id);
+                highlightSelectedColor(customColorLabel);
+            };
+            customColorLabel.appendChild(customColorInput);
+            customColorLabel.innerHTML += '<span style="font-size:1.2rem; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));">🎨</span>';
+            customColorLabel.appendChild(customColorInput);
+            colorContainer.appendChild(customColorLabel);
+            function highlightSelectedColor(targetBtn) {
+                const allBtns = colorContainer.querySelectorAll('button, label');
+                allBtns.forEach(b => b.classList.remove('ring-4', 'ring-orange-400'));
+                targetBtn.classList.add('ring-4', 'ring-orange-400');
+            }
+            colorContainer.firstElementChild.classList.add('ring-4', 'ring-orange-400');
+
+            // 3. 控制面板
+            const controls = document.createElement('div');
+            controls.className = 'bg-gray-100 p-4 rounded-xl space-y-4 mb-4';
+
+            const createControlRow = (label, icon, type, min, max, val, onChange) => {
+                const row = document.createElement('div');
+                row.innerHTML = `<div class="flex justify-between mb-1"><span class="text-gray-700 font-bold flex items-center gap-2">${icon} ${label}</span></div>`;
+                const slider = document.createElement('input');
+                slider.type = 'range'; slider.min = min; slider.max = max; slider.value = val;
+                slider.className = 'w-full h-4 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-orange-500';
+                slider.oninput = (e) => onChange(e.target.value);
+                row.appendChild(slider);
+                return row;
+            };
+
+            controls.appendChild(createControlRow('文字大小', '🔍', 'range', 5, 50, sticker.scale, (v) => { sticker.scale = parseInt(v); redrawSticker(sticker.id); }));
+            controls.appendChild(createControlRow('上下位置', '↕️', 'range', 0, 100, sticker.posY, (v) => { sticker.posY = parseInt(v); redrawSticker(sticker.id); }));
+            controls.appendChild(createControlRow('左右位置', '↔️', 'range', 0, 100, sticker.posX, (v) => { sticker.posX = parseInt(v); redrawSticker(sticker.id); }));
+            
+            const posBtns = document.createElement('div');
+            posBtns.className = 'flex justify-between gap-2 mt-2';
+            const addPosBtn = (text, x, y) => {
+                const btn = document.createElement('button');
+                btn.textContent = text;
+                btn.className = 'flex-1 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50';
+                btn.onclick = () => {
+                    sticker.posX = x; sticker.posY = y;
+                    controls.querySelectorAll('input')[1].value = y;
+                    controls.querySelectorAll('input')[2].value = x;
+                    redrawSticker(sticker.id);
+                };
+                posBtns.appendChild(btn);
+            };
+            addPosBtn('置頂', 50, 10);
+            addPosBtn('置中', 50, 50);
+            addPosBtn('置底', 50, 92);
+            controls.appendChild(posBtns);
+
+            // --- 4. 動作按鈕區 (下載 & 刪除) ---
+            const actionsContainer = document.createElement('div');
+            actionsContainer.className = "flex flex-col gap-3 mt-auto"; // mt-auto 推到最底
+
+            // 新增：單張下載按鈕
+            const singleDownloadBtn = document.createElement('button');
+            singleDownloadBtn.className = "w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-md transition btn-hover flex items-center justify-center gap-2 text-lg";
+            singleDownloadBtn.innerHTML = "📥 下載這張圖片";
+            singleDownloadBtn.onclick = () => {
+                downloadSingleSticker(sticker);
+            };
+
+            // 刪除按鈕
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = "w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl border border-red-200 transition flex items-center justify-center gap-2";
+            deleteBtn.innerHTML = "🗑️ 刪除";
+            deleteBtn.onclick = () => {
+                if(confirm('確定要刪除這張圖片嗎？')) {
+                    loadedStickers = loadedStickers.filter(s => s.id !== sticker.id);
+                    card.remove();
+                    document.getElementById('stickerCount').textContent = `✅ 已選擇 ${loadedStickers.length} 張圖片`;
+                    if(loadedStickers.length === 0) showMessage("圖片已全部清空");
+                }
+            };
+
+            actionsContainer.appendChild(singleDownloadBtn);
+            actionsContainer.appendChild(deleteBtn);
+
+            // 事件綁定
+            select.onchange = (e) => { input.value = e.target.value; sticker.text = e.target.value; redrawSticker(sticker.id); };
+            input.oninput = (e) => { select.value = ''; sticker.text = e.target.value; redrawSticker(sticker.id); };
+
+            // 組合
+            inputGroup.appendChild(select);
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(colorContainer);
+            
+            card.appendChild(canvasContainer);
+            card.appendChild(inputGroup);
+            card.appendChild(controls);
+            card.appendChild(actionsContainer); // 使用新的容器
+            
+            stickerGrid.appendChild(card);
+        }
+
+        // 新增：單張下載函式
+        function downloadSingleSticker(sticker) {
+            if (!sticker.canvas) return;
+            redrawSticker(sticker.id); // 確保是最新狀態
+            
+            // 產生檔名
+            let safeName = sticker.text.trim().substring(0, 8) || 'image';
+            safeName = safeName.replace(/[\\/:*?"<>|]/g, '_'); 
+            const fileName = `${sticker.file.name.split('.')[0]}_${safeName}.png`;
+
+            // 觸發下載
+            const link = document.createElement('a');
+            link.download = fileName;
+            link.href = sticker.canvas.toDataURL('image/png');
+            link.click();
+            
+            showMessage('⬇️ 這張圖片已經下載囉！');
+        }
+
+        function redrawSticker(id) {
+            const sticker = loadedStickers.find(s => s.id === id);
+            if (!sticker || !sticker.canvas) return;
+
+            const canvas = sticker.canvas;
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = sticker.img.naturalWidth;
+            canvas.height = sticker.img.naturalHeight;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(sticker.img, 0, 0);
+
+            if (sticker.text.trim() !== '') {
+                const fontSize = canvas.height * (sticker.scale / 100);
+                
+                ctx.font = `bold ${fontSize}px ${currentFontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle'; 
+                
+                const x = canvas.width * (sticker.posX / 100);
+                const y = canvas.height * (sticker.posY / 100);
+
+                // --- 修改開始：雙層描邊邏輯 ---
+
+                // 設定白邊的寬度 (原本的寬度)
+                const whiteStrokeWidth = fontSize * 0.06;
+                // 設定黑邊的寬度 (比白邊再粗一點點，形成外框)
+                // 0.05 是黑邊露出來的程度，數字越大黑邊越粗
+                const blackStrokeWidth = whiteStrokeWidth + (fontSize * 0.05);
+
+                ctx.lineJoin = 'round';
+                ctx.miterLimit = 2;
+
+                // 第一層：畫最底部的黑色外框
+                ctx.strokeStyle = '#b8b7b5'; // 黑灰色
+                ctx.lineWidth = blackStrokeWidth;
+                ctx.strokeText(sticker.text, x, y);
+
+                // 第二層：畫中間的白色邊框
+                ctx.strokeStyle = '#FFFFFF'; // 白色
+                ctx.lineWidth = whiteStrokeWidth;
+                ctx.strokeText(sticker.text, x, y);
+
+                // 第三層：畫最上面的文字顏色
+                ctx.fillStyle = sticker.textColor;
+                ctx.fillText(sticker.text, x, y);
+
+                // --- 修改結束 ---
+            }
+        }
+
+        async function batchDownload() {
+            if (loadedStickers.length === 0) {
+                showMessage('⚠️ 沒有圖片可以下載喔！');
+                return;
+            }
+            showMessage('⏳ 正在打包中，請稍等一下...');
+            const zip = new JSZip();
+            const folder = zip.folder("長輩圖_加工版");
+
+            for (const s of loadedStickers) {
+                redrawSticker(s.id);
+                const data = s.canvas.toDataURL('image/png').split(',')[1];
+                let safeName = s.text.trim().substring(0, 8) || 'image';
+                safeName = safeName.replace(/[\\/:*?"<>|]/g, '_'); 
+                folder.file(`${s.file.name.split('.')[0]}_${safeName}.png`, data, {base64: true});
+            }
+
+            const content = await zip.generateAsync({type:"blob"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(content);
+            a.download = '您的貼圖包.zip';
+            a.click();
+            showMessage('🎉 下載完成！請看您的下載資料夾。');
+        }
+    </script>
+</body>
+</html>
