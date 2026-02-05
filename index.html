@@ -3,11 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>長輩好用版 - LINE貼圖文字編輯器 (全功能版)</title>
+    <title> LINE貼圖文字編輯器 (全功能版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <style>
-        :root { font-family: 'Inter', '微軟正黑體', sans-serif; }
+        @font-face {
+            font-family: 'KNMaiyuan';
+            src: url('KNMaiyuan-Regular.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+        
+        :root { font-family: 'KNMaiyuan', 'Inter', '微軟正黑體', sans-serif; }
         
         input[type=range] {
             height: 35px;
@@ -78,7 +85,7 @@
                         🔤 換字體 (選用)
                     </button>
                     <input type="file" id="fontUpload" accept=".ttf,.otf" onchange="handleFontUpload(event)">
-                    <p id="fontStatus" class="mt-3 text-lg text-purple-600 font-medium text-center">目前字體：預設標準體</p>
+                    <p id="fontStatus" class="mt-3 text-lg text-purple-600 font-medium text-center">目前字體：KNMaiyuan-Regular</p>
                 </div>
             </div>
         </div>
@@ -111,7 +118,7 @@
     <script>
         const MAX_FILE_SIZE = 5 * 1024 * 1024; 
         let loadedStickers = []; 
-        let currentFontFamily = 'Inter, "Microsoft JhengHei", sans-serif'; 
+        let currentFontFamily = '"KNMaiyuan", Inter, "Microsoft JhengHei", sans-serif'; 
         
         const PREDEFINED_TEXTS = [
             '早安', '午安', '晚安', '謝謝', '收到', 'OK',
