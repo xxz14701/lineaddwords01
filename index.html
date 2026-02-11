@@ -25,10 +25,16 @@
             border-radius: 1rem;
             overflow: hidden;
             cursor: crosshair;
+            touch-action: none; /* 防止手機滑動頁面 */
         }
         
         .canvas-container.has-text {
             cursor: move;
+        }
+        
+        /* 橡皮擦模式下的游標 */
+        .canvas-container.eraser-mode {
+            cursor: crosshair !important;
         }
         
         .canvas-container:active {
@@ -181,6 +187,13 @@
         input:checked + .toggle-slider:before {
             transform: translateX(26px);
         }
+        
+        /* 橡皮擦模式按鈕樣式 */
+        .mode-active {
+            background-color: #ef4444 !important; /* Red-500 */
+            color: white !important;
+            border-color: #b91c1c !important;
+        }
     </style>
 </head>
 <body class="bg-amber-50 min-h-screen p-4 sm:p-6">
@@ -192,7 +205,7 @@
                 🎨 LINE 貼圖文字小幫手
             </h1>
             <p class="text-xl text-gray-600 font-medium">
-                支援多行文字、直覺式控點操作！
+                支援多行文字、塗抹去背、直覺式控點操作！
             </p>
         </div>
 
@@ -210,104 +223,115 @@
                             class="w-full py-6 px-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl font-bold rounded-xl shadow-lg transition btn-hover flex items-center justify-center gap-3">
                         📂 點這裡選圖片 (PNG)
                     </button>
-                    <input type="file" id="stickerUpload" accept="image/png" multiple onchange="handleStickerUpload(event)">
-                    <p id="stickerCount" class="text-center text-gray-500 mt-3 text-sm">尚未選擇圖片</p>
+                    <input type="file" id="stickerUpload" accept="image/png,image/jpeg" multiple onchange="handleStickerUpload(event)">
+                    <p id="stickerCount" class="mt-3 text-lg text-blue-600 font-medium text-center">尚未選擇圖片</p>
                 </div>
-                
+
                 <div class="flex-1">
                     <button onclick="document.getElementById('fontUpload').click()"
                             class="w-full py-6 px-4 bg-purple-500 hover:bg-purple-600 text-white text-xl font-bold rounded-xl shadow-lg transition btn-hover flex items-center justify-center gap-3">
                         🔤 換字體 (選用)
                     </button>
                     <input type="file" id="fontUpload" accept=".ttf,.otf" onchange="handleFontUpload(event)">
-                    <p id="fontStatus" class="text-center text-purple-600 mt-3 text-sm font-medium">目前字體：KNMaiyuan-Regular</p>
+                    <p id="fontStatus" class="mt-3 text-lg text-purple-600 font-medium text-center">目前字體：預設標準體</p>
                 </div>
             </div>
         </div>
 
         <div id="editSection" class="hidden">
-            <div class="bg-purple-50 rounded-2xl p-6 mb-8 border-2 border-purple-200">
-                <h2 class="text-2xl font-bold text-purple-800 mb-4 flex items-center">
-                    <span class="bg-purple-600 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">2</span>
-                    編輯每張貼圖
-                </h2>
-                <div id="stickerGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-gray-200 pb-3 flex items-center">
+                <span class="bg-orange-500 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">2</span>
+                調整內容 (塗抹去背 & 加字)
+            </h2>
 
-            <div class="bg-orange-50 rounded-2xl p-6 border-2 border-orange-200">
-                <h2 class="text-2xl font-bold text-orange-800 mb-4 flex items-center">
-                    <span class="bg-orange-600 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">3</span>
-                    下載成品
+            <div id="stickerGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                </div>
+
+            <div class="mt-12 pt-8 border-t-2 border-gray-300">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+                    <span class="bg-green-600 text-white rounded-full w-10 h-10 flex items-center justify-center mr-3 text-xl">3</span>
+                    完成下載
                 </h2>
-                <button onclick="batchDownload()" 
-                        class="w-full py-6 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-2xl font-bold rounded-xl shadow-lg transition btn-hover">
-                    📦 打包下載全部 (ZIP)
+                <button id="batchDownloadBtn" onclick="batchDownload()"
+                        class="w-full py-6 bg-green-600 text-white font-bold text-3xl rounded-xl shadow-xl hover:bg-green-700 transition btn-hover flex items-center justify-center gap-4">
+                    📦 一鍵下載全部貼圖 (ZIP壓縮包)
                 </button>
+                <p class="mt-4 text-lg text-gray-500 text-center">如果您想一次下載所有圖片,請按上面這個按鈕。</p>
             </div>
         </div>
 
+        <div id="messageBox" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white text-xl px-8 py-6 rounded-2xl shadow-2xl hidden z-50 text-center"></div>
     </div>
 
-    <div id="messageBox" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-4 rounded-2xl shadow-2xl text-lg font-bold z-50 hidden"></div>
-
     <script>
-        let loadedStickers = [];
-        let currentFontFamily = '"KNMaiyuan", sans-serif';
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; 
+        let loadedStickers = []; 
+        let currentFontFamily = 'KNMaiyuan, Inter, "Microsoft JhengHei", sans-serif'; 
         
-        // 建議文字列表
+        // 更新後的常用語列表
         const PREDEFINED_TEXTS = [
-            '早安', '午安', '晚安', '謝謝', '收到', 'OK',
-            '辛苦了', '讚', '好棒', '恭喜', '加油', '沒問題',
-            '生日快樂', '新年快樂', '保重', '哈囉', '拜拜'
+            '早安', '謝謝', 'OK', '哈哈', '晚安', '讚', '好棒', '吃飽沒', 'Hi', '沒問題', '好喔', '生日快樂',
+            '收到', '平安', '日安', '路上小心', '辛苦了', '注意保暖', '記得帶傘', '掰掰', '愛你', '感謝你', '拜託', '早點休息',
+            '加油', '你可以的', '一定沒問題的', '我覺得可以', '我覺得不行', '我很厲害吧', '什麼什麼什麼', '求求你啦', '不用客氣', '是這樣嗎', '哼', '好主意',
+            'Happy New Year', '恭喜發財', '情人節快樂', '母親節快樂', '父親節快樂', '端午安康', '中秋節快樂', '慶祝雙十', '重陽登高', '萬聖節快樂', '感恩節快樂', '聖誕快樂'
         ];
-        
-        function showMessage(msg) {
-            const box = document.getElementById('messageBox');
-            box.textContent = msg;
-            box.classList.remove('hidden');
-            setTimeout(() => box.classList.add('hidden'), 3000);
+
+        const stickerGrid = document.getElementById('stickerGrid');
+        const editSection = document.getElementById('editSection');
+
+        function showMessage(message) {
+            const msgBox = document.getElementById('messageBox');
+            msgBox.innerHTML = message;
+            msgBox.classList.remove('hidden');
+            setTimeout(() => {
+                msgBox.classList.add('hidden');
+            }, 2500);
         }
 
         function handleStickerUpload(event) {
             const files = Array.from(event.target.files);
             if (files.length === 0) return;
 
-            loadedStickers = [];
-            const grid = document.getElementById('stickerGrid');
-            grid.innerHTML = '';
+            loadedStickers = []; 
+            stickerGrid.innerHTML = '';
             
             document.getElementById('stickerCount').textContent = `✅ 已選擇 ${files.length} 張圖片`;
-            document.getElementById('editSection').classList.remove('hidden');
-            
+            editSection.classList.remove('hidden');
+
             let loadedCount = 0;
             files.forEach((file, index) => {
-                if (!file.type.startsWith('image/png')) return;
+                if (!file.type.match('image.*')) return;
                 
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const img = new Image();
                     img.onload = () => {
-                        const id = Date.now() + Math.random();
-                        const sticker = {
-                            id: id,
+                        // 創建遮罩 canvas（用於塗抹）
+                        const maskCanvas = document.createElement('canvas');
+                        maskCanvas.width = img.naturalWidth;
+                        maskCanvas.height = img.naturalHeight;
+                        
+                        const stickerObject = {
+                            id: `sticker-${Date.now()}-${index}`,
                             file: file,
                             img: img,
+                            maskCanvas: maskCanvas, // 新增遮罩 canvas
                             text: '',
                             textColor: '#000000',
-                            scale: 18,
-                            rotation: 0,
-                            posX: 50,
-                            posY: 50,
-                            canvas: null
+                            scale: 18,     
+                            posX: 50,      
+                            posY: 50,      
+                            rotation: 0,   
+                            eraserMode: false,  // 新增：橡皮擦模式
+                            eraserSize: 30,     // 新增：橡皮擦大小
+                            maskHistory: [],    // 新增：塗抹歷史記錄
                         };
-                        
-                        loadedStickers.push(sticker);
+                        loadedStickers.push(stickerObject);
+                        createStickerCard(stickerObject);
                         
                         loadedCount++;
-                        if (loadedCount === files.filter(f => f.type.startsWith('image/png')).length) {
-                            loadedStickers.sort((a, b) => a.file.name.localeCompare(b.file.name));
-                            loadedStickers.forEach(s => renderStickerCard(s));
-                            showMessage(`🎉 已成功載入 ${loadedStickers.length} 張圖片！`);
+                        if (loadedCount === files.length) {
+                            showMessage(`🎉 成功載入 ${files.length} 張圖片！`);
                         }
                     };
                     img.src = e.target.result;
@@ -319,160 +343,329 @@
         function handleFontUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-            
+
+            const fontName = 'CustomFont';
             const reader = new FileReader();
-            reader.onload = (e) => {
-                const fontName = 'CustomFont_' + Date.now();
+
+            reader.onload = function(e) {
                 const fontFace = new FontFace(fontName, `url(${e.target.result})`);
-                fontFace.load().then((loadedFont) => {
+
+                fontFace.load().then(function(loadedFont) {
                     document.fonts.add(loadedFont);
-                    currentFontFamily = `"${fontName}", sans-serif`;
-                    document.getElementById('fontStatus').textContent = `目前字體：${file.name}`;
+                    currentFontFamily = `${fontName}, 'Microsoft JhengHei', sans-serif`;
+                    
                     loadedStickers.forEach(s => redrawSticker(s.id));
-                    showMessage(`✅ 字體「${file.name}」已套用！`);
-                }).catch(() => {
-                    showMessage('❌ 字體檔案載入失敗，請確認格式正確。');
+                    
+                    document.getElementById('fontStatus').textContent = `✅ 已套用新字體：${file.name}`;
+                    showMessage('✅ 字體已成功套用！');
+                }).catch(function(error) {
+                    console.error('字體載入失敗：', error);
+                    showMessage('⚠️ 字體載入失敗，請確認檔案格式。');
                 });
             };
+
             reader.readAsDataURL(file);
         }
 
-        function renderStickerCard(sticker) {
-            const grid = document.getElementById('stickerGrid');
+        function createStickerCard(sticker) {
             const card = document.createElement('div');
-            card.className = 'bg-white rounded-xl shadow-lg p-4 border-2 border-gray-200 hover:border-purple-400 transition';
-            card.innerHTML = `
-                <div class="canvas-container" id="container-${sticker.id}">
-                    <div class="canvas-preview">
-                        <canvas id="canvas-${sticker.id}"></canvas>
-                        <div class="text-box-overlay" id="textbox-${sticker.id}">
-                            <div class="control-point rotate" data-action="rotate" style="top: -30px; left: 50%;"></div>
-                            <div class="control-point scale scale-nw" data-action="scale" style="top: 0; left: 0;"></div>
-                            <div class="control-point scale scale-ne" data-action="scale" style="top: 0; right: 0;"></div>
-                            <div class="control-point scale scale-sw" data-action="scale" style="bottom: 0; left: 0;"></div>
-                            <div class="control-point scale scale-se" data-action="scale" style="bottom: 0; right: 0;"></div>
-                        </div>
-                    </div>
-                    <div class="drag-hint">👆 拖曳移動 | 🔄 控點操作</div>
-                </div>
-                
-                <div class="mt-4 space-y-3">
-                    <!-- 建議文字選單 -->
-                    <select id="select-${sticker.id}" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none font-semibold">
-                        <option value="">📝 選擇常用詞...</option>
-                        ${PREDEFINED_TEXTS.map(t => `<option value="${t}">${t}</option>`).join('')}
-                    </select>
-                    
-                    <!-- 文字輸入框 -->
-                    <textarea id="textarea-${sticker.id}" 
-                              placeholder="輸入文字（可多行，按 Enter 換行）..."
-                              class="sticker-text-input w-full border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none font-bold">${sticker.text}</textarea>
-                    
-
-                    <!-- 文字顏色 -->
-                    <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border-2 border-gray-200">
-                        <label class="font-bold text-gray-700">文字顏色：</label>
-                        <input type="color" id="color-${sticker.id}" value="${sticker.textColor}" 
-                               class="w-16 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
-                    </div>
-                    
-                    <!-- 下載和刪除按鈕 -->
-                    <button id="download-${sticker.id}"
-                            class="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition btn-hover">
-                        📥 下載這張圖片
-                    </button>
-                    
-                    <button id="delete-${sticker.id}"
-                            class="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg border border-red-200 transition">
-                        🗑️ 刪除
-                    </button>
-                </div>
-            `;
-            grid.appendChild(card);
-
-            const canvas = document.getElementById(`canvas-${sticker.id}`);
+            card.className = 'bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden flex flex-col';
+            card.id = `card-${sticker.id}`;
+            
+            const canvasContainer = document.createElement('div');
+            canvasContainer.className = 'canvas-container relative';
+            
+            const preview = document.createElement('div');
+            preview.className = 'canvas-preview';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = sticker.img.naturalWidth;
+            canvas.height = sticker.img.naturalHeight;
             sticker.canvas = canvas;
             
-            // 綁定事件
-            const select = document.getElementById(`select-${sticker.id}`);
-            const textarea = document.getElementById(`textarea-${sticker.id}`);
-            const color = document.getElementById(`color-${sticker.id}`);
-            const downloadBtn = document.getElementById(`download-${sticker.id}`);
-            const deleteBtn = document.getElementById(`delete-${sticker.id}`);
+            const dragHint = document.createElement('div');
+            dragHint.className = 'drag-hint';
+            dragHint.textContent = '拖曳移動文字位置';
             
-            select.onchange = (e) => {
-                if (e.target.value) {
-                    textarea.value = e.target.value;
-                    sticker.text = e.target.value;
-                    redrawSticker(sticker.id);
-                    updateTextBox(sticker);
-                }
-            };
+            // 文字選取框
+            const textBox = document.createElement('div');
+            textBox.className = 'text-box-overlay';
             
-            textarea.oninput = (e) => {
-                sticker.text = e.target.value;
-                redrawSticker(sticker.id);
-                updateTextBox(sticker);
-            };
+            // 控制點：旋轉（上）、縮放（四角）
+            const controlPoints = [
+                { class: 'rotate', position: 'top', action: 'rotate', label: '🔄' },
+                { class: 'scale scale-nw', position: 'top-left', action: 'scale' },
+                { class: 'scale scale-ne', position: 'top-right', action: 'scale' },
+                { class: 'scale scale-sw', position: 'bottom-left', action: 'scale' },
+                { class: 'scale scale-se', position: 'bottom-right', action: 'scale' }
+            ];
             
-            color.oninput = (e) => {
+            controlPoints.forEach(cp => {
+                const point = document.createElement('div');
+                point.className = `control-point ${cp.class}`;
+                point.dataset.action = cp.action;
+                if (cp.label) point.textContent = cp.label;
+                textBox.appendChild(point);
+            });
+            
+            canvasContainer.appendChild(preview);
+            canvasContainer.appendChild(canvas);
+            canvasContainer.appendChild(textBox);
+            canvasContainer.appendChild(dragHint);
+            
+            redrawSticker(sticker.id);
+            
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'p-4 bg-gray-50 border-b border-gray-200';
+            
+            const select = document.createElement('select');
+            select.className = 'w-full mb-3 p-3 border-2 border-gray-300 rounded-lg bg-white text-lg focus:border-blue-500 focus:outline-none';
+            select.innerHTML = '<option value="">📝 選擇常用語...</option>';
+            PREDEFINED_TEXTS.forEach(text => {
+                const option = document.createElement('option');
+                option.value = text;
+                option.textContent = text;
+                select.appendChild(option);
+            });
+            
+            const input = document.createElement('textarea');
+            input.className = 'sticker-text-input w-full border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition';
+            input.placeholder = '或直接輸入想寫的字 (支援多行)';
+            input.value = sticker.text;
+            
+            const colorContainer = document.createElement('div');
+            colorContainer.className = 'flex items-center gap-3 mt-3';
+            
+            const colorLabel = document.createElement('span');
+            colorLabel.className = 'text-base font-medium text-gray-700';
+            colorLabel.textContent = '文字顏色：';
+            
+            const colorPicker = document.createElement('input');
+            colorPicker.type = 'color';
+            colorPicker.value = sticker.textColor;
+            colorPicker.className = 'w-16 h-10 border-2 border-gray-300 rounded cursor-pointer';
+            colorPicker.oninput = (e) => {
                 sticker.textColor = e.target.value;
                 redrawSticker(sticker.id);
             };
             
-            downloadBtn.onclick = () => downloadSingleSticker(sticker);
+            colorContainer.appendChild(colorLabel);
+            colorContainer.appendChild(colorPicker);
             
-            deleteBtn.onclick = () => {
-                if (confirm('確定要刪除這張圖片嗎？')) {
-                    loadedStickers = loadedStickers.filter(s => s.id !== sticker.id);
-                    card.remove();
-                    document.getElementById('stickerCount').textContent = `✅ 已選擇 ${loadedStickers.length} 張圖片`;
-                    if (loadedStickers.length === 0) {
-                        document.getElementById('editSection').classList.add('hidden');
-                        showMessage("圖片已全部清空");
+            // 新增：塗抹工具控制區
+            const eraserControls = document.createElement('div');
+            eraserControls.className = 'mt-4 p-3 bg-yellow-50 border-2 border-yellow-200 rounded-lg';
+            
+            const eraserTitle = document.createElement('div');
+            eraserTitle.className = 'text-base font-bold text-yellow-800 mb-2';
+            eraserTitle.textContent = '✏️ 塗抹去背工具';
+            
+            const eraserModeBtn = document.createElement('button');
+            eraserModeBtn.className = 'w-full py-2 px-4 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition mb-2';
+            eraserModeBtn.textContent = '開啟塗抹模式';
+            eraserModeBtn.id = `eraserBtn-${sticker.id}`;
+            
+            const eraserSizeControl = document.createElement('div');
+            eraserSizeControl.className = 'flex items-center gap-3 mt-2';
+            
+            const eraserLabel = document.createElement('span');
+            eraserLabel.className = 'text-sm font-medium text-gray-700 whitespace-nowrap';
+            eraserLabel.textContent = '筆刷大小：';
+            
+            const eraserSlider = document.createElement('input');
+            eraserSlider.type = 'range';
+            eraserSlider.min = '10';
+            eraserSlider.max = '80';
+            eraserSlider.value = sticker.eraserSize;
+            eraserSlider.className = 'flex-1';
+            
+            const eraserValue = document.createElement('span');
+            eraserValue.className = 'text-sm font-bold text-gray-700 w-8 text-right';
+            eraserValue.textContent = sticker.eraserSize;
+            
+            eraserSlider.oninput = (e) => {
+                sticker.eraserSize = parseInt(e.target.value);
+                eraserValue.textContent = sticker.eraserSize;
+            };
+            
+            // 橡皮擦模式切換
+            eraserModeBtn.onclick = () => {
+                sticker.eraserMode = !sticker.eraserMode;
+                if (sticker.eraserMode) {
+                    eraserModeBtn.textContent = '關閉塗抹模式';
+                    eraserModeBtn.classList.add('mode-active');
+                    canvasContainer.classList.add('eraser-mode');
+                    textBox.classList.remove('active');
+                } else {
+                    eraserModeBtn.textContent = '開啟塗抹模式';
+                    eraserModeBtn.classList.remove('mode-active');
+                    canvasContainer.classList.remove('eraser-mode');
+                    if (sticker.text && sticker.text.trim() !== '') {
+                        textBox.classList.add('active');
                     }
                 }
             };
             
-            initializeCanvas(sticker);
-            redrawSticker(sticker.id);
-        }
-
-        function initializeCanvas(sticker) {
-            const container = document.getElementById(`container-${sticker.id}`);
-            const textBox = document.getElementById(`textbox-${sticker.id}`);
+            eraserSizeControl.appendChild(eraserLabel);
+            eraserSizeControl.appendChild(eraserSlider);
+            eraserSizeControl.appendChild(eraserValue);
             
-            // 更新文字框位置和旋轉的函數
-            sticker.updateTextBox = (s) => {
-                const rect = container.getBoundingClientRect();
-                const fontSize = rect.height * (s.scale / 100);
-                const boxSize = fontSize * 2.5;
-                
-                const x = rect.width * (s.posX / 100);
-                const y = rect.height * (s.posY / 100);
-                
-                textBox.style.left = `${x}px`;
-                textBox.style.top = `${y}px`;
-                textBox.style.width = `${boxSize}px`;
-                textBox.style.height = `${boxSize}px`;
-                textBox.style.transform = `translate(-50%, -50%) rotate(${s.rotation}deg)`;
-                
-                if (s.text && s.text.trim() !== '') {
-                    textBox.classList.add('active');
-                    container.classList.add('has-text');
+            // 新增：復原和清除按鈕
+            const eraserActionBtns = document.createElement('div');
+            eraserActionBtns.className = 'flex gap-2 mt-2';
+            
+            const undoBtn = document.createElement('button');
+            undoBtn.className = 'flex-1 py-2 px-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg transition text-sm';
+            undoBtn.textContent = '↶ 復原上一步';
+            undoBtn.onclick = () => {
+                if (sticker.maskHistory.length > 0) {
+                    sticker.maskHistory.pop(); // 移除最後一筆
+                    restoreMaskFromHistory(sticker);
+                    redrawSticker(sticker.id);
+                    showMessage('✅ 已復原上一步塗抹');
                 } else {
-                    textBox.classList.remove('active');
-                    container.classList.remove('has-text');
+                    showMessage('⚠️ 沒有可復原的操作');
                 }
             };
             
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'flex-1 py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg transition text-sm';
+            clearBtn.textContent = '🗑️ 清除全部';
+            clearBtn.onclick = () => {
+                if (confirm('確定要清除所有塗抹嗎？')) {
+                    sticker.maskHistory = [];
+                    const ctx = sticker.maskCanvas.getContext('2d');
+                    ctx.clearRect(0, 0, sticker.maskCanvas.width, sticker.maskCanvas.height);
+                    redrawSticker(sticker.id);
+                    showMessage('✅ 已清除所有塗抹');
+                }
+            };
+            
+            eraserActionBtns.appendChild(undoBtn);
+            eraserActionBtns.appendChild(clearBtn);
+            
+            eraserControls.appendChild(eraserTitle);
+            eraserControls.appendChild(eraserModeBtn);
+            eraserControls.appendChild(eraserSizeControl);
+            eraserControls.appendChild(eraserActionBtns);
+            
+
+
+            const actionsContainer = document.createElement('div');
+            actionsContainer.className = "flex flex-col gap-3 p-4";
+
+            const singleDownloadBtn = document.createElement('button');
+            singleDownloadBtn.className = "w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-md transition btn-hover flex items-center justify-center gap-2 text-lg";
+            singleDownloadBtn.innerHTML = "📥 下載這張圖片";
+            singleDownloadBtn.onclick = () => { downloadSingleSticker(sticker); };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = "w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl border border-red-200 transition flex items-center justify-center gap-2";
+            deleteBtn.innerHTML = "🗑️ 刪除";
+            deleteBtn.onclick = () => {
+                if(confirm('確定要刪除這張圖片嗎？')) {
+                    loadedStickers = loadedStickers.filter(s => s.id !== sticker.id);
+                    card.remove();
+                    document.getElementById('stickerCount').textContent = `✅ 已選擇 ${loadedStickers.length} 張圖片`;
+                    if(loadedStickers.length === 0) showMessage("圖片已全部清空");
+                }
+            };
+
+            actionsContainer.appendChild(singleDownloadBtn);
+            actionsContainer.appendChild(deleteBtn);
+
+            select.onchange = (e) => { 
+                input.value = e.target.value; 
+                sticker.text = e.target.value; 
+                redrawSticker(sticker.id);
+                updateTextBox(sticker);
+                if (sticker.text.trim() !== '') {
+                    textBox.classList.add('active');
+                }
+            };
+            
+            input.oninput = (e) => { 
+                select.value = ''; 
+                sticker.text = e.target.value; 
+                redrawSticker(sticker.id);
+                updateTextBox(sticker);
+                if (sticker.text.trim() !== '') {
+                    textBox.classList.add('active');
+                } else {
+                    textBox.classList.remove('active');
+                }
+            };
+
+            inputGroup.appendChild(select);
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(colorContainer);
+            inputGroup.appendChild(eraserControls); // 加入塗抹控制
+            
+            card.appendChild(canvasContainer);
+            card.appendChild(inputGroup);
+            card.appendChild(actionsContainer);
+            
+            stickerGrid.appendChild(card);
+            
+            // 設定拖曳和橡皮擦功能
+            setupInteraction(sticker, canvasContainer, textBox);
+        }
+        
+        function setupInteraction(sticker, container, textBox) {
             let isDragging = false;
             let isRotating = false;
             let isScaling = false;
-            let startX, startY, startPosX, startPosY, startRotation, startScale;
+            let isErasing = false; // 新增：追蹤塗抹狀態
+            let startX = 0, startY = 0;
+            let startPosX = 0, startPosY = 0;
+            let startRotation = 0;
+            let startScale = 0;
             let initialDistance = 0;
             
-            // 觸控和滑鼠事件統一處理
+            // 更新文字框位置和大小
+            sticker.updateTextBox = (s) => {
+                if (!s.text || s.text.trim() === '' || s.eraserMode) {
+                    textBox.classList.remove('active');
+                    return;
+                }
+                
+                textBox.classList.add('active');
+                const rect = container.getBoundingClientRect();
+                const canvas = s.canvas;
+                
+                const fontSize = canvas.height * (s.scale / 100);
+                const lines = s.text.split('\n');
+                const lineHeight = fontSize * 1.2;
+                const totalHeight = lineHeight * lines.length;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.font = `bold ${fontSize}px ${currentFontFamily}`;
+                const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+                
+                const padding = fontSize * 0.3;
+                const boxWidth = (maxWidth / canvas.width) * rect.width + padding * 2;
+                const boxHeight = (totalHeight / canvas.height) * rect.height + padding * 2;
+                
+                textBox.style.left = `${(s.posX / 100) * rect.width - boxWidth / 2}px`;
+                textBox.style.top = `${(s.posY / 100) * rect.height - boxHeight / 2}px`;
+                textBox.style.width = `${boxWidth}px`;
+                textBox.style.height = `${boxHeight}px`;
+                textBox.style.transform = `rotate(${s.rotation}deg)`;
+                
+                // 更新控制點位置
+                const points = textBox.querySelectorAll('.control-point');
+                points[0].style.left = '50%';
+                points[0].style.top = '-15px';
+                points[1].style.left = '0';
+                points[1].style.top = '0';
+                points[2].style.left = '100%';
+                points[2].style.top = '0';
+                points[3].style.left = '0';
+                points[3].style.top = '100%';
+                points[4].style.left = '100%';
+                points[4].style.top = '100%';
+            };
+            
             const getEventCoords = (e) => {
                 if (e.touches && e.touches.length > 0) {
                     return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
@@ -480,24 +673,22 @@
                 return { clientX: e.clientX, clientY: e.clientY };
             };
             
-            // 計算兩點距離（用於縮放）
             const getDistance = (x1, y1, x2, y2) => {
                 return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
             };
             
-            // 控制點事件
-            const controlPoints = textBox.querySelectorAll('.control-point');
-            controlPoints.forEach(point => {
+            // 控制點互動
+            textBox.querySelectorAll('.control-point').forEach(point => {
                 const startControl = (e) => {
-                    e.stopPropagation();
                     e.preventDefault();
+                    e.stopPropagation();
                     
                     const coords = getEventCoords(e);
+                    const rect = container.getBoundingClientRect();
                     
                     if (point.dataset.action === 'rotate') {
                         isRotating = true;
                         startRotation = sticker.rotation;
-                        const rect = container.getBoundingClientRect();
                         const centerX = rect.left + rect.width * (sticker.posX / 100);
                         const centerY = rect.top + rect.height * (sticker.posY / 100);
                         startX = coords.clientX - centerX;
@@ -516,13 +707,23 @@
                 point.addEventListener('touchstart', startControl, { passive: false });
             });
             
-            // Canvas 容器拖曳
+            // Canvas 容器互動（拖曳文字或塗抹）
             const startDrag = (e) => {
                 if (e.target.classList.contains('control-point')) return;
                 
+                const coords = getEventCoords(e);
+                
+                // 橡皮擦模式
+                if (sticker.eraserMode) {
+                    isErasing = true;
+                    drawOnMask(e, sticker);
+                    e.preventDefault();
+                    return;
+                }
+                
+                // 文字拖曳模式
                 if (sticker.text && sticker.text.trim() !== '') {
                     isDragging = true;
-                    const coords = getEventCoords(e);
                     startX = coords.clientX;
                     startY = coords.clientY;
                     startPosX = sticker.posX;
@@ -538,6 +739,13 @@
             // 滑鼠/觸控移動處理
             const handleMove = (e) => {
                 const coords = getEventCoords(e);
+                
+                // 持續塗抹
+                if (isErasing) {
+                    drawOnMask(e, sticker);
+                    e.preventDefault();
+                    return;
+                }
                 
                 if (isDragging) {
                     const rect = container.getBoundingClientRect();
@@ -578,7 +786,6 @@
                     const currentDistance = getDistance(coords.clientX, coords.clientY, centerX, centerY);
                     const distanceRatio = currentDistance / initialDistance;
                     
-                    // 改進的縮放計算：使用距離比例
                     sticker.scale = Math.max(5, Math.min(50, startScale * distanceRatio));
                     
                     redrawSticker(sticker.id);
@@ -588,11 +795,22 @@
             };
             
             const handleEnd = () => {
-                if (isDragging || isRotating || isScaling) {
+                // 塗抹結束時儲存歷史記錄
+                if (isErasing) {
+                    saveMaskToHistory(sticker);
+                }
+                
+                if (isDragging || isRotating || isScaling || isErasing) {
                     isDragging = false;
                     isRotating = false;
                     isScaling = false;
-                    container.style.cursor = (sticker.text && sticker.text.trim()) ? 'move' : 'crosshair';
+                    isErasing = false;
+                    
+                    if (sticker.eraserMode) {
+                        container.style.cursor = 'crosshair';
+                    } else {
+                        container.style.cursor = (sticker.text && sticker.text.trim()) ? 'move' : 'crosshair';
+                    }
                 }
             };
             
@@ -602,9 +820,70 @@
             document.addEventListener('touchend', handleEnd);
         }
         
+        // 新增：塗抹繪製函數
+        function drawOnMask(event, sticker) {
+            const canvas = sticker.canvas;
+            const rect = canvas.getBoundingClientRect();
+            
+            let clientX, clientY;
+            if(event.touches) {
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+
+            const scaleX = sticker.img.naturalWidth / rect.width;
+            const scaleY = sticker.img.naturalHeight / rect.height;
+
+            const x = (clientX - rect.left) * scaleX;
+            const y = (clientY - rect.top) * scaleY;
+
+            const ctx = sticker.maskCanvas.getContext('2d');
+            
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = sticker.eraserSize * (sticker.img.naturalWidth / 500); 
+            ctx.strokeStyle = '#000'; 
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            redrawSticker(sticker.id);
+        }
+        
         function updateTextBox(sticker) {
             if (sticker.updateTextBox) {
                 sticker.updateTextBox(sticker);
+            }
+        }
+        
+        // 新增：儲存塗抹歷史記錄
+        function saveMaskToHistory(sticker) {
+            const imageData = sticker.maskCanvas.toDataURL();
+            sticker.maskHistory.push(imageData);
+            
+            // 限制歷史記錄數量（最多保留20步）
+            if (sticker.maskHistory.length > 20) {
+                sticker.maskHistory.shift();
+            }
+        }
+        
+        // 新增：從歷史記錄復原塗抹
+        function restoreMaskFromHistory(sticker) {
+            const ctx = sticker.maskCanvas.getContext('2d');
+            ctx.clearRect(0, 0, sticker.maskCanvas.width, sticker.maskCanvas.height);
+            
+            if (sticker.maskHistory.length > 0) {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0);
+                    redrawSticker(sticker.id);
+                };
+                img.src = sticker.maskHistory[sticker.maskHistory.length - 1];
             }
         }
 
@@ -636,6 +915,12 @@
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(sticker.img, 0, 0);
+
+            // 應用塗抹遮罩
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.drawImage(sticker.maskCanvas, 0, 0);
+            ctx.restore();
 
             if (sticker.text && sticker.text.trim() !== '') {
                 const fontSize = canvas.height * (sticker.scale / 100);
